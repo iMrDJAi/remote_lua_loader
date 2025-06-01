@@ -537,8 +537,38 @@ function setup(block_fd)
     end
 
     aio_submit_cmd(AIO_CMD_READ, reqs1, NUM_WORKERS, block_id)
+    printf("** submitted aio with id: %d", memory.read_dword(block_id):tonumber())
 
-    -- 2. heap grooming
+    -- 2. verify if aio can be blocked
+
+    if true then
+
+        local reqs1 = make_reqs1(1)
+        local timeout = memory.alloc(4)
+        local id = memory.alloc(4)
+    
+        memory.write_dword(timeout, 1)
+    
+        aio_submit_cmd(AIO_CMD_READ, reqs1, 1, id)
+        printf("** submitted test aio with id: %d", memory.read_dword(id):tonumber())
+
+        local ret = syscall.aio_multi_wait(id, 1, AIO_ERRORS, 1, timeout)
+
+        printf("** aio_multi_wait returned: %d", ret:tonumber())
+        printf("** errno: %s", get_error_string())
+        printf("** AIO_ERRORS[0]: %d", memory.read_dword(AIO_ERRORS):tonumber())
+
+        local error_func = fcall(libc_addrofs.error)
+        local errno = memory.read_qword(error_func()):tonumber()
+
+        if errno ~= 60 then -- ETIMEDOUT
+            printf("SceAIO system not blocked. error: %s", get_error_string())
+        end
+
+        free_aios(id, 1)
+    end
+
+    -- 3. heap grooming
 
     -- chosen to maximize the number of 0x80 malloc allocs per submission
     local num_reqs = 3
